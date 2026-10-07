@@ -88,4 +88,20 @@ public class GlobalExceptionHandler {
                 .status(HttpStatus.NOT_FOUND)
                 .body(errorResponse);
     }
+
+    // Handles cases where an employee does not have a profile image
+    @ExceptionHandler(ProfileImageNotFoundException.class)
+    public ResponseEntity<ErrorResponse> handleProfileImageNotFound(ProfileImageNotFoundException exception, HttpServletRequest request) {
+
+        ErrorResponse errorResponse = new ErrorResponse(
+                LocalDateTime.now(),
+                HttpStatus.NOT_FOUND.value(),
+                exception.getMessage(),
+                request.getRequestURI()
+        );
+
+        return ResponseEntity
+                .status(HttpStatus.NOT_FOUND)
+                .body(errorResponse);
+    }
 }

@@ -1,10 +1,8 @@
 package com.example.employeemanagementsystem.controller;
 
 import com.example.employeemanagementsystem.dto.EmployeePageResponseDTO;
-import com.example.employeemanagementsystem.dto.EmployeeRequestDTO;
 import com.example.employeemanagementsystem.dto.EmployeeResponseDTO;
-import com.example.employeemanagementsystem.entity.Employee;
-import com.example.employeemanagementsystem.mapper.EmployeeMapper;
+import com.example.employeemanagementsystem.dto.EmployeeUpdateRequestDTO;
 import com.example.employeemanagementsystem.service.EmployeeService;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
@@ -12,9 +10,12 @@ import jakarta.validation.constraints.Min;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
+import com.example.employeemanagementsystem.dto.EmployeeMultipartRequestDTO;
+import org.springframework.web.multipart.MultipartFile;
 
 @RestController
 @RequestMapping("/api/employees")
@@ -24,7 +25,6 @@ import org.springframework.web.bind.annotation.*;
 public class EmployeeController {
 
     private final EmployeeService employeeService;
-    private final EmployeeMapper employeeMapper;
 
     // Retrieves employee with pagination, sorting and searching
     // Get first 10 employees - GET http://localhost:8080/api/employees
@@ -56,18 +56,16 @@ public class EmployeeController {
         return ResponseEntity.ok(response);
     }
 
-    // Creates a new employee
-    @PostMapping
-    public ResponseEntity<EmployeeResponseDTO> createEmployee(
-            @Valid @RequestBody EmployeeRequestDTO requestDTO) {
+    // Creates an employee along with a profile image
+    @PostMapping(value = "", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResponseEntity<EmployeeResponseDTO> createEmployee(@Valid @ModelAttribute EmployeeMultipartRequestDTO requestDTO, @RequestParam("profileImage") MultipartFile profileImage) {
 
         log.info(
-                "POST /api/employees - Creating employee with email: {}",
+                "Received request to create employee with email: {}",
                 requestDTO.getEmail()
         );
 
-        EmployeeResponseDTO response =
-                employeeService.createEmployee(requestDTO);
+        EmployeeResponseDTO response = employeeService.createEmployee(requestDTO, profileImage);
 
         return ResponseEntity
                 .status(HttpStatus.CREATED)
@@ -77,11 +75,40 @@ public class EmployeeController {
     // Retrieves a single employee by ID
     @GetMapping("/{id}")
     public ResponseEntity<EmployeeResponseDTO> getEmployeeById(@PathVariable Long id) {
-
-        log.info("GET /api/employees/{} - Fetching employee", id);
-        Employee employee = employeeService.getEmployeeById(id);
-        EmployeeResponseDTO response = employeeMapper.toResponseDTO(employee);
-
+        log.info("Fetching employee with ID: {}", id);
+        EmployeeResponseDTO response = employeeService.getEmployeeById(id);
         return ResponseEntity.ok(response);
+    }
+
+    // Updates an existing employee
+    @PutMapping("/{id}")
+    public ResponseEntity<EmployeeResponseDTO> updateEmployee(@PathVariable Long id, @Valid @RequestBody EmployeeUpdateRequestDTO requestDTO) {
+
+        log.info("Received request to update employee with ID: {}", id);
+        EmployeeResponseDTO response = employeeService.updateEmployee(id, requestDTO);
+        return ResponseEntity.ok(response);
+    }
+
+    // delete an existing employee
+    @DeleteMapping("/{id}")
+    public ResponseEntity<Void> deleteEmployee(@PathVariable Long id) {
+        log.info("Received request to delete employee with ID: {}", id);
+        employeeService.deleteEmployee(id);
+        return ResponseEntity.noContent().build();
+    }
+
+    // Retrieves employee profile image
+    @GetMapping("/{id}/image")
+    public ResponseEntity<byte[]> getEmployeeImage(@PathVariable Long id) {
+
+        log.info("Fetching profile image for employee ID: {}", id);
+        byte[] image = employeeService.getEmployeeImage(id);
+        String contentType = employeeService.getEmployeeImageContentType(id);
+
+        // Return image with its correct MIME type
+        return ResponseEntity
+                .ok()
+                .contentType(MediaType.parseMediaType(contentType))
+                .body(image);
     }
 }

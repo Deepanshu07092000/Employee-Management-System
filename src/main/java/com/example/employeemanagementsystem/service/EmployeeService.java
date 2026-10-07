@@ -1,18 +1,17 @@
 package com.example.employeemanagementsystem.service;
 
-import com.example.employeemanagementsystem.dto.EmployeePageResponseDTO;
-import com.example.employeemanagementsystem.dto.EmployeeRequestDTO;
-import com.example.employeemanagementsystem.dto.EmployeeResponseDTO;
-import com.example.employeemanagementsystem.entity.Employee;
+import com.example.employeemanagementsystem.dto.*;
+import org.springframework.web.multipart.MultipartFile;
 
 
 public interface EmployeeService {
 
     // Creates a new employee
-    EmployeeResponseDTO createEmployee(EmployeeRequestDTO requestDTO);
+    EmployeeResponseDTO createEmployee(EmployeeMultipartRequestDTO requestDTO, MultipartFile profileImage
+    );
 
     // Retrieves an employee by its ID
-    Employee getEmployeeById(Long id);
+    EmployeeResponseDTO getEmployeeById(Long id);
 
     // Retrieves employees with pagination, sorting and searching
     EmployeePageResponseDTO getEmployees(
@@ -24,8 +23,14 @@ public interface EmployeeService {
     );
 
     // Updates an existing employee
-    Employee updateEmployee(Long id, Employee employee);
+    EmployeeResponseDTO updateEmployee(Long id, EmployeeUpdateRequestDTO requestDTO);
 
     // Deletes an employee by its ID
     void deleteEmployee(Long id);
+
+    // Retrieves employee profile image from database
+    byte[] getEmployeeImage(Long id);
+
+    // Retrieves employee profile image content type
+    String getEmployeeImageContentType(Long id);
 }

@@ -48,9 +48,14 @@ public class Employee {
     @Column(nullable = false)
     private LocalDate joiningDate;
 
-    // Name of the uploaded profile image file (stored on disk, not in the DB)
-    @Column(length = 255)
-    private String profileImageName;
+    // Stores employee profile image as a large binary object
+    @Lob
+    @Column(name = "profile_image", columnDefinition = "LONGBLOB")
+    private byte[] profileImage;
+
+    // Stores the MIME type of the uploaded image
+    @Column(name = "profile_image_content_type", length = 100)
+    private String profileImageContentType;
 
     // Whether the employee is currently active
     @Column(nullable = false)

@@ -1,14 +1,13 @@
 package com.example.employeemanagementsystem.service;
 
-import com.example.employeemanagementsystem.dto.EmployeePageResponseDTO;
-import com.example.employeemanagementsystem.dto.EmployeeRequestDTO;
-import com.example.employeemanagementsystem.dto.EmployeeResponseDTO;
+import com.example.employeemanagementsystem.dto.*;
 import com.example.employeemanagementsystem.entity.Address;
 import com.example.employeemanagementsystem.entity.Department;
 import com.example.employeemanagementsystem.entity.Employee;
 import com.example.employeemanagementsystem.exception.EmployeeNotFoundException;
 import com.example.employeemanagementsystem.exception.AddressNotFoundException;
 import com.example.employeemanagementsystem.exception.DepartmentNotFoundException;
+import com.example.employeemanagementsystem.exception.ProfileImageNotFoundException;
 import com.example.employeemanagementsystem.mapper.EmployeeMapper;
 import com.example.employeemanagementsystem.repository.AddressRepository;
 import com.example.employeemanagementsystem.repository.DepartmentRepository;
@@ -21,7 +20,9 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
+import org.springframework.web.multipart.MultipartFile;
 
+import java.io.IOException;
 import java.util.List;
 
 @Service
@@ -35,22 +36,23 @@ public class EmployeeServiceImpl implements EmployeeService {
     private final EmployeeMapper employeeMapper;
 
     // Creates a new employee
+    @Transactional
     @Override
-    public EmployeeResponseDTO createEmployee(EmployeeRequestDTO requestDTO) {
-
+    public EmployeeResponseDTO createEmployee(EmployeeMultipartRequestDTO requestDTO, MultipartFile profileImage) {
         log.info("Creating employee with email: {}", requestDTO.getEmail());
+
+        // Validate profile image
+        if (profileImage == null || profileImage.isEmpty()) {
+            throw new IllegalArgumentException("Profile image is required");
+        }
 
         // Find the department provided in the request
         Department department = departmentRepository.findById(requestDTO.getDepartmentId())
-                .orElseThrow(() -> new DepartmentNotFoundException(
-                        "Department not found with id: " + requestDTO.getDepartmentId()
-                ));
+                .orElseThrow(() -> new DepartmentNotFoundException("Department not found with id: " + requestDTO.getDepartmentId()));
 
         // Find the address provided in the request
         Address address = addressRepository.findById(requestDTO.getAddressId())
-                .orElseThrow(() -> new AddressNotFoundException(
-                        "Address not found with id: " + requestDTO.getAddressId()
-                ));
+                .orElseThrow(() -> new AddressNotFoundException("Address not found with id: " + requestDTO.getAddressId()));
 
         // Convert request DTO into Employee entity
         Employee employee = new Employee();
@@ -64,44 +66,41 @@ public class EmployeeServiceImpl implements EmployeeService {
         employee.setJoiningDate(requestDTO.getJoiningDate());
         employee.setActive(requestDTO.getActive());
 
+        try {
+            // Store image bytes in database
+            employee.setProfileImage(profileImage.getBytes());
+
+            // Store image MIME type such as image/jpeg or image/png
+            employee.setProfileImageContentType(profileImage.getContentType());
+
+        } catch (IOException exception) {
+            log.error("Failed to read profile image", exception);
+            throw new RuntimeException("Failed to process profile image");
+        }
+
         // Set employee relationships
         employee.setDepartment(department);
         employee.setAddress(address);
-
         Employee savedEmployee = employeeRepository.save(employee);
-
         log.info("Employee created successfully with ID: {}", savedEmployee.getId());
 
         // Convert saved entity into response DTO
-        return new EmployeeResponseDTO(
-                savedEmployee.getId(),
-                savedEmployee.getFirstName(),
-                savedEmployee.getLastName(),
-                savedEmployee.getEmail(),
-                savedEmployee.getPhoneNumber(),
-                savedEmployee.getDesignation(),
-                savedEmployee.getSalary(),
-                savedEmployee.getJoiningDate(),
-                savedEmployee.getDepartment().getId(),
-                savedEmployee.getDepartment().getName(),
-                savedEmployee.getAddress().getId(),
-                savedEmployee.getActive()
-        );
+        return employeeMapper.toResponseDTO(savedEmployee);
     }
 
-    // Retrieves an employee by ID
     // Retrieves an employee by ID along with department and address
     @Override
-    public Employee getEmployeeById(Long id) {
-
+    public EmployeeResponseDTO getEmployeeById(Long id) {
         log.info("Fetching employee with ID: {}", id);
-
-        return employeeRepository
+        Employee employee = employeeRepository
                 .findEmployeeWithDepartmentAndAddressById(id)
                 .orElseThrow(() -> {
                     log.warn("Employee not found with ID: {}", id);
                     return new EmployeeNotFoundException("Employee not found with id: " + id);
                 });
+
+        // Convert entity to response DTO
+        return employeeMapper.toResponseDTO(employee);
     }
 
     // Retrieves employees with pagination, sorting and searching
@@ -175,33 +174,68 @@ public class EmployeeServiceImpl implements EmployeeService {
 
     // Updates an existing employee
     @Override
-    public Employee updateEmployee(Long id, Employee employee) {
+    @Transactional
+    public EmployeeResponseDTO updateEmployee(Long id, EmployeeUpdateRequestDTO requestDTO) {
 
         log.info("Updating employee with ID: {}", id);
 
+        // Find the existing employee
         Employee existingEmployee = employeeRepository.findById(id)
                 .orElseThrow(() -> {
                     log.warn("Employee not found for update. ID: {}", id);
                     return new EmployeeNotFoundException("Employee not found with id: " + id);
                 });
 
-        existingEmployee.setFirstName(employee.getFirstName());
-        existingEmployee.setLastName(employee.getLastName());
-        existingEmployee.setEmail(employee.getEmail());
-        existingEmployee.setPhoneNumber(employee.getPhoneNumber());
-        existingEmployee.setDesignation(employee.getDesignation());
-        existingEmployee.setSalary(employee.getSalary());
-        existingEmployee.setJoiningDate(employee.getJoiningDate());
-        existingEmployee.setActive(employee.getActive());
+        // Find the new department
+        Department department = departmentRepository
+                .findById(requestDTO.getDepartmentId())
+                .orElseThrow(() -> {
+                    log.warn(
+                            "Department not found. ID: {}",
+                            requestDTO.getDepartmentId()
+                    );
+                    return new DepartmentNotFoundException(
+                            "Department not found with id: "
+                                    + requestDTO.getDepartmentId()
+                    );
+                });
+
+        // Find the new address
+        Address address = addressRepository
+                .findById(requestDTO.getAddressId())
+                .orElseThrow(() -> {
+                    log.warn(
+                            "Address not found. ID: {}",
+                            requestDTO.getAddressId()
+                    );
+                    return new AddressNotFoundException("Address not found with id: " + requestDTO.getAddressId());
+                });
+
+        // Update employee fields
+        existingEmployee.setFirstName(requestDTO.getFirstName());
+        existingEmployee.setLastName(requestDTO.getLastName());
+        existingEmployee.setEmail(requestDTO.getEmail());
+        existingEmployee.setPhoneNumber(requestDTO.getPhoneNumber());
+        existingEmployee.setDesignation(requestDTO.getDesignation());
+        existingEmployee.setSalary(requestDTO.getSalary());
+        existingEmployee.setJoiningDate(requestDTO.getJoiningDate());
+        existingEmployee.setActive(requestDTO.getActive());
+
+        // Update relationships
+        existingEmployee.setDepartment(department);
+        existingEmployee.setAddress(address);
 
         Employee updatedEmployee = employeeRepository.save(existingEmployee);
 
         log.info("Employee updated successfully with ID: {}", id);
-        return updatedEmployee;
+
+        // Convert entity into response DTO
+        return employeeMapper.toResponseDTO(updatedEmployee);
     }
 
     // Deletes an employee by ID
     @Override
+    @Transactional
     public void deleteEmployee(Long id) {
 
         log.info("Deleting employee with ID: {}", id);
@@ -215,5 +249,48 @@ public class EmployeeServiceImpl implements EmployeeService {
 
         employeeRepository.delete(existingEmployee);
         log.info("Employee deleted successfully with ID: {}", id);
+    }
+
+    // Retrieves employee profile image from database
+    @Override
+    @Transactional(readOnly = true)
+    public byte[] getEmployeeImage(Long id) {
+
+        log.info("Fetching profile image for employee ID: {}", id);
+
+        Employee employee = employeeRepository.findById(id)
+                .orElseThrow(() -> {
+                    log.warn("Employee not found with ID: {}", id);
+                    return new EmployeeNotFoundException("Employee not found with id: " + id);
+                });
+
+        // Check whether employee has an image
+        if (employee.getProfileImage() == null || employee.getProfileImage().length == 0) {
+
+            log.warn("Profile image not found for employee ID: {}", id);
+            throw new ProfileImageNotFoundException("Profile image not found for employee with id: " + id);
+        }
+        return employee.getProfileImage();
+    }
+
+    // Retrieves the MIME type of employee profile image
+    @Override
+    @Transactional(readOnly = true)
+    public String getEmployeeImageContentType(Long id) {
+
+        log.info("Fetching profile image content type for employee ID: {}", id);
+
+        Employee employee = employeeRepository.findById(id)
+                .orElseThrow(() -> {
+                    log.warn("Employee not found with ID: {}", id);
+                    return new EmployeeNotFoundException("Employee not found with id: " + id);
+                });
+
+        // Check whether image content type exists
+        if (employee.getProfileImageContentType() == null || employee.getProfileImageContentType().isBlank()) {
+            log.warn("Profile image content type not found for employee ID: {}", id);
+            throw new ProfileImageNotFoundException("Profile image not found for employee with id: " + id);
+        }
+        return employee.getProfileImageContentType();
     }
 }
